@@ -132,17 +132,12 @@ def transform_single(single_mouse, body_parts_tracked, fps):
         if new_features_ear:
             X = pd.concat([X, pd.DataFrame(new_features_ear, index=X.index)], axis=1)
 
-    # --- ĐOẠN CODE THÊM MỚI ---
-    # 1. Thêm Egocentric (Quan trọng nhất)
     X = add_egocentric_features(X, single_mouse, fps)
     
-    # 2. Thêm Grooming Features (Cải thiện lớp 'Grooming' và 'Other')
     X = add_grooming_features(X, single_mouse, fps)
     
-    # 3. Thêm Temporal Asymmetry (Cải thiện lớp 'Attack' và 'Chase')
     if 'body_center' in available_body_parts:
         cx = single_mouse['body_center']['x']
         cy = single_mouse['body_center']['y']
         X = add_temporal_asymmetry(X, cx, cy, fps)
-    # --------------------------
     return X.astype(np.float32, copy=False)
