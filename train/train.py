@@ -50,7 +50,7 @@ class DataSampler(ClassifierMixin, BaseEstimator):
 
 def train_and_save_models(body_parts_tracked_str, switch_tr, X_tr, label, meta, section_id):
     """Train XGBoost and CatBoost models and save them to disk."""
-    import catboost # Import here to ensure availability
+    import catboost 
     
     # Create save directory
     save_dir = os.path.join(CFG.MODEL_SAVE_PATH, switch_tr, f"section_{section_id}")
@@ -116,23 +116,20 @@ def optimize_thresholds_optuna(y_true_dict, y_prob_dict, n_trials=100):
             y_t = y_true_dict[action]
             y_p = y_prob_dict[action]
             
-            # Suggest a float for this action
             thresh = trial.suggest_float(action, 0.1, 0.8)
             
             # Calculate F1
             score = f1_score(y_t, (y_p >= thresh).astype(int), zero_division=0)
             f1_scores.append(score)
             
-        # Return Macro F1
+        # Return F1
         return np.mean(f1_scores)
 
     study = optuna.create_study(direction='maximize')
     study.optimize(objective, n_trials=n_trials)
     
-    # Extract best thresholds
     best_thresholds = study.best_params
     
-    # Print result
     print(f"Optuna Best Macro F1: {study.best_value:.4f}")
     return best_thresholds
 
@@ -158,11 +155,6 @@ def cross_validate_classifier(binary_classifier, X, label, meta):
                 try:
                     # Use StratifiedGroupKFold
                     cv = StratifiedGroupKFold(n_splits=3)
-                    
-                    # Manual Loop because cross_val_predict is tricky with StratifiedGroupKFold
-                    # We just use cross_val_predict with cv object, 
-                    # but StratifiedGroupKFold requires 'y' for split()
-                    # cross_val_predict passes 'groups' properly if provided.
                     
                     oof_probs = cross_val_predict(
                         binary_classifier, 

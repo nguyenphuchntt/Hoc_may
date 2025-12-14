@@ -15,7 +15,6 @@ CURRENT_ACTION_TYPE = None
 
 def normalize_key(body_parts_str):
     """Normalize JSON string to a canonical form for consistent lookup.
-    
     Converts body_parts_str to a sorted JSON string representation
     that matches the keys in _OPTIMIZED_THRESHOLDS.
     """
@@ -28,7 +27,6 @@ def normalize_key(body_parts_str):
 
 def get_section_thresholds(body_parts_str, action_type=None):
     """Get the threshold dictionary for a specific section.
-    
     NOTE: action_type is ignored in this version (flat structure).
     Returns a dict of {action_name: threshold} or empty dict if not found.
     """
@@ -49,10 +47,8 @@ def get_section_thresholds(body_parts_str, action_type=None):
 
 def predict_multiclass(pred, meta):
     """Derive multiclass predictions from a set of binary predictions.
-    
     Uses per-action thresholds from hardcoded _OPTIMIZED_THRESHOLDS dict.
     Logs whether threshold was found or falls back to default.
-    
     Parameters
     pred: dataframe of predicted binary probabilities, shape (n_samples, n_actions)
     meta: dataframe with columns ['video_id', 'agent_id', 'target_id', 'video_frame']
@@ -61,8 +57,6 @@ def predict_multiclass(pred, meta):
     # Note: FLAT structure - action_type is ignored
     section_thresholds = get_section_thresholds(CURRENT_BODY_PARTS_STR)
     
-    # Gap fill: ~0.3 giây (~10 frames ở 30fps)
-    # Min duration: ~0.1 giây (~3-5 frames)
     GAP_FILL_SIZE = 10
     MIN_DURATION_SIZE = 5 
     
@@ -76,14 +70,11 @@ def predict_multiclass(pred, meta):
         # Get threshold for this specific action
         if action_key in section_thresholds:
             thresh = section_thresholds[action_key]
-            print(f'    ✓ Threshold found for action {action}: {thresh:.4f}')
         else:
             thresh = DEFAULT_THRESHOLD
-            print(f'    ⚠ Threshold not found for action {action}, fall back to {DEFAULT_THRESHOLD}')
         
         binary_pred[action] = (pred[action] >= thresh).astype(int)
 
-    # --- POST-PROCESSING ---
     for col in binary_pred.columns:
         mask = binary_pred[col].values
         

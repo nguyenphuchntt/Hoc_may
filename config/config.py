@@ -9,11 +9,9 @@ def get_gpu_params():
         import subprocess
         result = subprocess.run(['nvidia-smi'], capture_output=True)
         if result.returncode == 0:
-            print('✓ GPU detected - using GPU acceleration')
             return {'tree_method': 'hist', 'device': 'cuda', 'predictor': 'gpu_predictor'}
     except:
         pass
-    print('⚠ No GPU - using CPU')
     return {'tree_method': 'hist', 'predictor': 'cpu_predictor'}
 
 GPU_PARAMS = get_gpu_params()

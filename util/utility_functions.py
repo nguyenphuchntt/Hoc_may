@@ -46,5 +46,3 @@ def _fps_from_meta(meta_df, fallback_lookup, default_fps=30.0):
         return float(meta_df['frames_per_second'].iloc[0])
     vid = meta_df['video_id'].iloc[0]
     return float(fallback_lookup.get(vid, default_fps))
-
-    

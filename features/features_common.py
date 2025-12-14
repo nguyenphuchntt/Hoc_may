@@ -35,7 +35,7 @@ def add_multiscale_features(X, center_x, center_y, fps):
     # displacement per frame is already in cm (pix normalized earlier); convert to cm/s
     speed = safe_sqrt(center_x.diff()**2 + center_y.diff()**2) * float(fps)
     
-    # Smooth speed signal using Savitzky-Golay filter (window ~15 frames)
+    # Smooth speed signal using Savitzky-Golay filter (window 15 frames)
     try:
         ws = min(15, len(speed) // 2)
         if ws >= 5 and ws % 2 == 1:  # Must be odd
@@ -123,7 +123,6 @@ def add_fft_features(X, signal, signal_name, fps, window_size=120):
     Extract FFT-based frequency domain features using Vectorized Spectrogram.
     Massively faster than rolling loop.
     """
-    
     ws = _scale(window_size, fps)
     N = len(signal)
     
@@ -131,42 +130,37 @@ def add_fft_features(X, signal, signal_name, fps, window_size=120):
         return X
     
     try:
-        # Fill NaNs for FFT input
         sig_filled = signal.ffill().bfill().fillna(0).values
         
         # Compute Spectrogram
-        # nperseg=ws, noverlap=ws-1 gives stride=1, mimicking rolling(window=ws)
         f, t, Sxx = spectrogram(sig_filled, fs=fps, window='hann', 
                                 nperseg=ws, noverlap=ws-1, 
                                 mode='psd', detrend='constant', scaling='density')
         
         # Sxx shape: (n_freqs, n_time_steps)
         # Transpose to (n_time_steps, n_freqs) to align with time
-        Sxx = Sxx.T + 1e-20 # Avoid log(0)
+        Sxx = Sxx.T + 1e-20 
         
         # 1. Spectral Energy
         spectral_energy = np.sum(Sxx, axis=1)
         
         # 2. Spectral Entropy
-        # Normalize to probability distribution along freq axis
         P_norm = Sxx / (spectral_energy[:, None])
         spectral_entropy = -np.sum(P_norm * np.log2(P_norm), axis=1)
         
         # 3. Dominant Frequency
-        # Skip DC component (index 0)
         dom_idx = np.argmax(Sxx[:, 1:], axis=1) + 1
         dominant_freq = f[dom_idx]
         
-        # 4. Low Band Power (0-1 Hz)
+        # 4.(0-1 Hz)
         mask_low = (f >= 0) & (f < 1.0)
         power_low = np.sum(Sxx[:, mask_low], axis=1)
         
-        # 5. High Band Power (1-5 Hz)
+        # 5.(1-5 Hz)
         mask_high = (f >= 1.0) & (f < 5.0)
         power_high = np.sum(Sxx[:, mask_high], axis=1)
         
-        # Padding to match original length N
-        # The spectrogram output length is roughly N - ws + 1
+        # Padding
         pad_head = ws // 2
         
         feats_dict = {
@@ -182,7 +176,6 @@ def add_fft_features(X, signal, signal_name, fps, window_size=120):
         
         for name, val_array in feats_dict.items():
             arr = np.full(N, np.nan)
-            # Ensure we don't overflow if calculation is slightly off
             end_idx = min(N, pad_head + valid_len)
             arr[pad_head : end_idx] = val_array[:end_idx-pad_head]
             new_features[name] = arr
@@ -285,7 +278,7 @@ def add_egocentric_features(X, mouse_df, fps):
     Biến đổi tọa độ sang hệ quy chiếu lấy chuột làm tâm (Egocentric).
     Chuẩn hóa sao cho: Body Center tại (0,0), Mũi hướng về phía dương trục X.
     """
-    # 1. Xác định trục cơ thể (Spine Vector)
+    # trục cơ thể
     if not all(p in mouse_df.columns.get_level_values(0) for p in ['nose', 'body_center']):
         return X
 
@@ -300,8 +293,7 @@ def add_egocentric_features(X, mouse_df, fps):
 
     new_feats = {}
     
-    # 2. Xoay tọa độ các bộ phận quan trọng
-    # Chỉ quan tâm các bộ phận chính để giảm chiều dữ liệu
+    # 2. Xoay tọa độ các bộ phận
     key_parts = ['ear_left', 'ear_right', 'tail_base', 'tail_tip']
     available_parts = mouse_df.columns.get_level_values(0)
 
@@ -311,7 +303,6 @@ def add_egocentric_features(X, mouse_df, fps):
             rx = mouse_df[part]['x'] - mouse_df['body_center']['x']
             ry = mouse_df[part]['y'] - mouse_df['body_center']['y']
             
-            # Phép quay ma trận 2D
             # x_new = x*cos - y*sin
             # y_new = x*sin + y*cos
             x_rot = rx * cos_a - ry * sin_a
@@ -327,7 +318,7 @@ def add_egocentric_features(X, mouse_df, fps):
 
 def add_grooming_features(X, mouse_df, fps):
     """
-    Phát hiện hành vi chải chuốt: Thân đứng yên nhưng đầu di chuyển/rung lắc.
+    Phát hiện hành vi chải chuốt
     """
     if not all(p in mouse_df.columns.get_level_values(0) for p in ['nose', 'body_center']):
         return X
@@ -337,19 +328,16 @@ def add_grooming_features(X, mouse_df, fps):
     # Tốc độ thân
     body_speed = np.sqrt(mouse_df['body_center']['x'].diff()**2 + mouse_df['body_center']['y'].diff()**2) * fps
 
-    # Tỷ lệ tách biệt (Decoupling Ratio)
-    # Thêm 1e-3 để tránh chia cho 0
+    # Tỷ lệ tách biệt
     decouple = nose_speed / (body_speed + 1e-3)
     
-    # Làm mượt (Smoothing) vì hành vi này thường kéo dài ít nhất 0.5s
     w = int(0.5 * fps)
     
     new_feats = {}
     new_feats['head_body_ratio'] = decouple.rolling(w).median()
-    new_feats['body_immobile'] = (body_speed < 2.0).astype(float) # Thân di chuyển dưới 2cm/s
-    new_feats['nose_active'] = (nose_speed > 5.0).astype(float)   # Mũi di chuyển trên 5cm/s
+    new_feats['body_immobile'] = (body_speed < 2.0).astype(float) # < 2cm/s
+    new_feats['nose_active'] = (nose_speed > 5.0).astype(float)   # > 5cm/s
     
-    # Kết hợp logic: Grooming = Thân tĩnh AND Mũi động
     new_feats['grooming_score'] = new_feats['body_immobile'] * new_feats['nose_active']
 
     X = pd.concat([X, pd.DataFrame(new_feats, index=X.index)], axis=1)
@@ -357,26 +345,24 @@ def add_grooming_features(X, mouse_df, fps):
 
 def add_temporal_asymmetry(X, center_x, center_y, fps):
     """
-    So sánh vận tốc tương lai và quá khứ để phát hiện chuyển đổi trạng thái (Attack onset/offset).
+    (Attack onset/offset).
     """
     speed = np.sqrt(center_x.diff()**2 + center_y.diff()**2) * fps
     
     # Cửa sổ 1 giây
     w = int(1.0 * fps)
     
-    # Vận tốc trung bình Quá khứ (shift dương)
+    # Vận tốc trung bình Quá khứ
     # min_periods=1 để tránh NaN ở đầu video
     past_mean = speed.rolling(window=w, min_periods=1).mean()
     
-    # Vận tốc trung bình Tương lai (shift ngược bằng cách đảo ngược chuỗi)
-    # Hoặc dùng: speed.shift(-w).rolling(w).mean() nhưng cách dưới chính xác hơn cho biên
+    # Vận tốc trung bình Tương lai
     future_mean = speed.iloc[::-1].rolling(window=w, min_periods=1).mean().iloc[::-1]
     
     new_feats = {}
-    # Delta V: Dương -> Đang tăng tốc (Attack start), Âm -> Đang giảm tốc (Stop)
+    # Delta V: Dương -> Đang tăng tốc
     new_feats['accel_trend_1s'] = future_mean - past_mean
     
-    # Ratio: Thay đổi gấp bao nhiêu lần
     new_feats['accel_ratio_1s'] = future_mean / (past_mean + 1e-3)
 
     X = pd.concat([X, pd.DataFrame(new_feats, index=X.index)], axis=1)
